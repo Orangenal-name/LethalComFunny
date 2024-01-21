@@ -95,7 +95,20 @@ namespace LethalComFunny
             
             string sAssemblyLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
 
-            assets = AssetBundle.LoadFromFile(Path.Combine(sAssemblyLocation, "lethalcomfunny"));
+            string resourceName = "LethalComFunny.Assets.lethalcomfunny";
+
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            using (Stream stream = assembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream != null)
+                {
+                    assets = AssetBundle.LoadFromStream(stream);
+                }
+                else
+                {
+                    Debug.LogError("Embedded resource not found.");
+                }
+            }
             if (assets == null)
             {
                 Logger.LogError("Failed to load custom assets.");
