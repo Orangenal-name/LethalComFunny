@@ -1,22 +1,20 @@
 ﻿using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
-using GameNetcodeStuff;
 using HarmonyLib;
 using LC_API.Networking;
 using LC_API.Networking.Serializers;
-using System;
+using LethalSettings.UI.Components;
+using LethalSettings.UI;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Runtime.Serialization.Formatters.Binary;
-using System.Threading;
-using System.Threading.Tasks;
-using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using GameNetcodeStuff;
+using System.IO;
+using System.Reflection;
+using UnityEngine.UI;
 
 namespace LethalComFunny
 {
@@ -28,35 +26,86 @@ namespace LethalComFunny
         public static Plugin instance;
 
         static InputAction action = new InputAction(binding: "<Keyboard>/y");
+        static InputAction menuAction = new InputAction(binding: "<Keyboard>/u");
         static StartOfRound gameInstance => StartOfRound.Instance;
         static SelectableLevel currentLevel => gameInstance.currentLevel;
 
         static bool allowDeadSpawns = false;
+        private static bool menuOpen = false;
 
-        public static new ManualLogSource Logger;
+        internal static new ManualLogSource Logger;
 
-        static List<Landmine> mines = new List<Landmine>();
+        public static List<Landmine> mines = new List<Landmine>();
+        public static AssetBundle assets;
+        private static Dictionary<ulong, GameObject> joinedPlayersUI = new Dictionary<ulong, GameObject>();
+        private static GameObject playerTogglesContainer = GameObject.Find("Systems/UI/Canvas/LethalComFunny");
 
         public static MConfig LCFConfig { get; internal set; }
 
 
         private void Awake()
         {
+            Logger = base.Logger;
+
             if (instance == null)
             {
                 instance = this;
             }
-
+            
             action.performed += ctx => queueSpawnMine();
             action.Enable();
+            
+            menuAction.performed += ctx => toggleMenu();
+            menuAction.Enable();
 
             Network.RegisterAll();
 
             LCFConfig = new(Config);
+            
+            ModMenu.RegisterMod(new ModMenu.ModSettingsConfig
+            {
+                Name = "Lethal ComFunny",
+                Id = PluginInfo.PLUGIN_GUID,
+                Version = "1.0.1",
+                Description = "Become a funny asset to the company",
+                MenuComponents = new MenuComponent[]
+                {
+                    new ToggleComponent
+                    {
+                        Text = "Allow dead players to spawn mines?",
+                        OnValueChanged = (self, value) => {
+                            MConfig.configDeadSpawns.Value = value;
+                            if (gameInstance != null && gameInstance.IsHost)
+                            {
+                                SyncConfig();
+                            }
+                        },
+                        Value = MConfig.configDeadSpawns.Value
+                    },
+                    new ToggleComponent
+                    {
+                        Text = "Allow other (non-host) players to spawn mines?",
+                        OnValueChanged = (self, value) => {
+                            MConfig.configHostOnly.Value = !value;
+                        },
+                        Value = !MConfig.configHostOnly.Value
+                    }
+                }
+            }, true, true);
+            
+            string sAssemblyLocation = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+
+            assets = AssetBundle.LoadFromFile(Path.Combine(sAssemblyLocation, "lethalcomfunny"));
+            if (assets == null)
+            {
+                Logger.LogError("Failed to load custom assets.");
+                return;
+            }
+            
+            CreditedCompany.Plugin.credits.Add("Orangenal - Lethal ComFunny");
 
             harmony.PatchAll(typeof(Plugin));
-
-            Logger = BepInEx.Logging.Logger.CreateLogSource(PluginInfo.PLUGIN_GUID);
+            
             Logger.LogInfo($"Plugin {PluginInfo.PLUGIN_GUID} is loaded!");
         }
 
@@ -64,7 +113,6 @@ namespace LethalComFunny
         [HarmonyPostfix]
         static void disableHitboxAfterExplosion(ref Landmine __instance)
         {
-            // Start a coroutine to wait for 5 seconds before disabling the hitbox
             gameInstance.StartCoroutine(DestroyOnDelay(5f, __instance));
         }
 
@@ -88,7 +136,6 @@ namespace LethalComFunny
 
         static IEnumerator DestroyOnDelay(float delay, Landmine mine)
         {
-            // Wait for the specified delay
             mines.Remove(mine);
             mine.gameObject.transform.Find("BlastMark").parent = null;
             yield return new WaitForSeconds(delay);
@@ -120,12 +167,18 @@ namespace LethalComFunny
         [NetworkMessage("LethalCumFunnyMineSpawn")]
         public static void SpawnHandler(ulong sender, Vector3SClass message)
         {
-            if (gameInstance.IsHost)
-                spawnMine(message.pos.vector3);
+            if (gameInstance.IsHost && !MConfig.configHostOnly.Value)
+            {
+                spawnMine(message.pos.vector3, sender);
+            } 
         }
 
-        public static void spawnMine(Vector3 pos)
+        public static void spawnMine(Vector3 pos, ulong sender = 0)
         {
+            if (joinedPlayersUI[sender] != null)
+            {
+                if (!joinedPlayersUI[sender].GetComponent<Toggle>().isOn) return;
+            }
             foreach (SpawnableMapObject obj in currentLevel.spawnableMapObjects)
             {
                 if (obj.prefabToSpawn.GetComponentInChildren<Landmine>() == null) continue;
@@ -138,19 +191,74 @@ namespace LethalComFunny
             }
         }
 
-        [HarmonyPatch(typeof(GameNetworkManager), "SteamMatchmaking_OnLobbyMemberJoined")]
-        [HarmonyPostfix]
+        public void toggleMenu()
+        {
+            if (!gameInstance.IsHost || gameInstance.allPlayerScripts.Length == 1 || MConfig.configHostOnly.Value) return;
+            PlayerControllerB playerController = gameInstance.localPlayerController;
+
+            if (playerController == null) return;
+
+            if (menuOpen)
+            {
+                menuOpen = false;
+                Cursor.visible = false;
+                Cursor.lockState = CursorLockMode.Locked;
+            }
+            else
+            {
+                menuOpen = true;
+                Cursor.lockState = CursorLockMode.None;
+            }
+            playerController.quickMenuManager.isMenuOpen = menuOpen;
+            playerTogglesContainer.SetActive(menuOpen);
+        }
+
         public static void SyncConfig()
+        {
+            gameInstance.StartCoroutine(SendConfigOnDelay(5f));
+        }
+
+        [HarmonyPatch(typeof(GameNetworkManager), "Singleton_OnClientConnectedCallback")]
+        [HarmonyPostfix]
+        public static void OnPlayerJoin(ref ulong clientId)
         {
             if (gameInstance.IsHost)
             {
-                gameInstance.StartCoroutine(SendConfigOnDelay(5f));
+                SyncConfig();
+
+                GameObject toggle = Instantiate(assets.LoadAsset<GameObject>("Assets/AllowSpawningToggle.prefab"));
+
+                GameObject topLeftCorner = GameObject.Find("Systems/UI/Canvas/");
+                
+                if (playerTogglesContainer == null)
+                {
+                    playerTogglesContainer = new GameObject("LethalComFunny");
+                    playerTogglesContainer.transform.SetParent(topLeftCorner.transform, false);
+                    playerTogglesContainer.SetActive(menuOpen);
+                }
+
+                toggle.transform.SetParent(playerTogglesContainer.transform, false);
+                RectTransform rectTransform = toggle.GetComponent<RectTransform>();
+
+                rectTransform.position += new Vector3(0, 0.05f*joinedPlayersUI.Count, 0);
+
+                string name = StartOfRound.Instance.allPlayerScripts[clientId].playerUsername;
+                toggle.GetComponentInChildren<Text>().text = name;
+
+
+                joinedPlayersUI.Add(clientId, toggle);
             }
+        }
+
+        [HarmonyPatch(typeof(GameNetworkManager), "Singleton_OnClientDisconnectCallback")]
+        [HarmonyPostfix]
+        public static void OnPlayerLeave()
+        {
+            
         }
 
         static IEnumerator SendConfigOnDelay(float delay)
         {
-            // Wait for the specified delay
             yield return new WaitForSeconds(delay);
             Logger.LogInfo("Telling clients to set configDeadSpawns to " + MConfig.configDeadSpawns.Value);
             Network.Broadcast("LethalCumFunnySendConfig", new ConfigWrapper() { Value = MConfig.configDeadSpawns.Value });
@@ -189,6 +297,7 @@ namespace LethalComFunny
     public class MConfig
     {
         public static ConfigEntry<bool> configDeadSpawns;
+        public static ConfigEntry<bool> configHostOnly;
 
         public MConfig(ConfigFile cfg)
         {
@@ -198,6 +307,13 @@ namespace LethalComFunny
                     false,
                     "Whether or not to allow dead players to spawn mines"
             );
+            configHostOnly = cfg.Bind(
+                    "General.Toggles",
+                    "OnlyHostAllowed",
+                    false,
+                    "If set to true, only the host can spawn mines"
+            );
+
         }
     }
 }

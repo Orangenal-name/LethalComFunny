@@ -35,8 +35,17 @@
       <Reference Include="BepInEx">
         <HintPath>C:\Users\Alex.ELEMENT2\AppData\Roaming\Thunderstore Mod Manager\DataFolder\LethalCompany\profiles\Default\BepInEx\core\BepInEx.dll</HintPath>
       </Reference>
+      <Reference Include="CreditedCompany">
+        <HintPath>..\..\Credited Company\CreditedCompany\bin\Debug\netstandard2.1\CreditedCompany.dll</HintPath>
+      </Reference>
+      <Reference Include="Facepunch.Steamworks.Win64">
+        <HintPath>..\..\Credited Company\CreditedCompany\bin\Debug\netstandard2.1\Facepunch.Steamworks.Win64.dll</HintPath>
+      </Reference>
       <Reference Include="LC_API">
         <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\BepInEx\plugins\2018-LC_API\LC_API.dll</HintPath>
+      </Reference>
+      <Reference Include="LethalSettings">
+        <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\BepInEx\plugins\willis81808-LethalSettings\LethalSettings.dll</HintPath>
       </Reference>
       <Reference Include="Unity.Collections">
         <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\Unity.Collections.dll</HintPath>
@@ -47,11 +56,17 @@
       <Reference Include="Unity.Netcode.Runtime">
         <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\Unity.Netcode.Runtime.dll</HintPath>
       </Reference>
+      <Reference Include="Unity.TextMeshPro">
+        <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\Unity.TextMeshPro.dll</HintPath>
+      </Reference>
       <Reference Include="UnityEngine">
         <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\UnityEngine.dll</HintPath>
       </Reference>
       <Reference Include="UnityEngine.CoreModule">
         <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+      </Reference>
+      <Reference Include="UnityEngine.UI">
+        <HintPath>..\..\..\..\Program Files\Steam\steamapps\common\Lethal Company\Lethal Company_Data\Managed\UnityEngine.UI.dll</HintPath>
       </Reference>
     </ItemGroup>
 
